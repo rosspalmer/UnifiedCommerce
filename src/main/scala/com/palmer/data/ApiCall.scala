@@ -3,7 +3,7 @@ package com.palmer.data
 import scala.sys.process.*
 
 
-case class ApiCall(restType: RestfulType, url: String, options: Set[ApiCallOption]) {
+case class ApiCall(restType: RestfulType, url: String, options: Set[ApiCallOption] = Set.empty) {
 
   def generateCurlStatement: String = {
 
