@@ -1,5 +1,4 @@
 package com.palmer.data
-package com.palmer.data
 
 import scala.sys.process.*
 
@@ -104,22 +103,3 @@ case class InputData(value: String) extends ApiCallOption {
 trait WithInputData {
   def getInputData: InputData
 }
-
-
-case class ApiCallResult(apiCall: ApiCall, returnCode: Int, result: Option[String])
-//
-//case class ApiCallFuture(apiCall: ApiCall) {
-//
-//  def run(): ApiCallResult = {
-//
-//    val command: Seq[String] = Seq("curl", "-v") :++ apiCall.callType.curlPrefixArgs :++
-//      apiCall.headers.map(h => "-H" +: h).getOrElse(Seq.empty) :++
-//      apiCall.data.map(d => Seq("-d", d)).getOrElse(Seq.empty)
-//
-//    val lazyReturn = command
-//    lazyReturn.redu
-//    ???
-//
-//  }
-//
-//}
