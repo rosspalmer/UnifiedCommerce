@@ -7,28 +7,60 @@ sealed abstract class RestfulType(val curlPrefixArgs: Seq[String])
 object RestfulType {
 
   case object GetType extends RestfulType(Seq.empty)
-  case object PostType extends RestfulType(Seq("TODO"))
+  case object PostType extends RestfulType(Seq("-X", "POST"))
   case object PutType extends RestfulType(Seq("-X", "PUT"))
   case object DeleteType extends RestfulType(Seq(""))
 
 }
 
-// General arguments
-// -H headers
-// --output <FILE> return bytes
-// -d <DATA> input data
-// -v include header information
 
-abstract class ApiCall( val restType: RestfulType, val url: String)
+abstract class ApiCall(val restType: RestfulType, val url: String) {
+
+  def generateCurlStatement: String = {
+
+    val curlOptions: Seq[String] = {
+
+      // Headers -H '<HEADER>'
+      this match
+        case headers: WithHeaders =>
+          headers.getHeaders.values.map(h => s"-H '$h'")
+        case _ => Seq.empty[String]
+      
+    } ++: {
+      
+      // Input Data -d '<DATA>'
+      this match
+        case inputData: WithInputData =>
+          Seq(s"-d '${inputData.getInputData.value}'")
+        case _ => Seq.empty[String]
+    
+    } ++: {
+
+      // Output Bytes Data --output <FILE>
+      this match
+        case outputBytes: WithOutputBytes =>
+          Seq(s"--output '${outputBytes.getOutputBytes.outputPath}'")
+        case _ => Seq.empty[String]
+
+    }
+
+    // Use curl option string to produce human friendly command
+    val curlOptionsString = curlOptions.size match
+      case 0 => " "
+      case 1 => s" ${curlOptions.head} "
+      case _ => " " + curlOptions.mkString(" \\\n")
+
+    "curl" + curlOptionsString + url
+
+  }
+
+}
 
 object ApiCall {
 
-  def generate(restType: RestfulType, url: String, options: Option[Set[ApiCallOption]] = None): ApiCall = {
+  def generate(restType: RestfulType, url: String, options: Set[ApiCallOption] = Set.empty): ApiCall = {
 
-    def getOption(optionKey: String): Option[ApiCallOption] = {
-      options.getOrElse(Seq.empty).find(_.getOptionKey == optionKey)
-    }
-
+    def getOption(optionKey: String): Option[ApiCallOption] = options.find(_.getOptionKey == optionKey)
     val headers = getOption(OptionKeys.HEADERS)
     val outputBytes = getOption(OptionKeys.OUTPUT_BYTES)
     val inputData = getOption(OptionKeys.INPUT_DATA)
