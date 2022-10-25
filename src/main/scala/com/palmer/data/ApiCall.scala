@@ -5,17 +5,23 @@ import scala.sys.process.*
 
 case class ApiCall(restType: RestfulType, url: String, options: Set[ApiCallOption] = Set.empty) {
 
+  // Generate human-read friendly curl statement by using line breaks
   def generateCurlStatement: String = {
 
-    val fullOptions = options.map(_.generateFullArgument)
-    
-    // Use curl option string to produce human friendly command
-    val curlOptionsString = fullOptions.size match
+    val curlTypeString = restType.curlPrefixArgs.size match
       case 0 => " "
-      case 1 => s" ${fullOptions.head} "
-      case _ => " " + fullOptions.mkString(" \\\n") +" \\\n"
+      case 1 => s" ${restType.curlPrefixArgs.head} "
+      case _ => s" ${restType.curlPrefixArgs.mkString(" ")} \\\n"
 
-    "curl" + curlOptionsString + url
+    // TODO add sorting
+    val fullOptions = options.map(_.generateFullArgument)
+    val curlOptionsString = (restType.curlPrefixArgs.size > 1, fullOptions.size) match
+      case (_, 0) => ""
+      case (false, 1) => s"${fullOptions.head} "
+      case (true, 1) => s"${fullOptions.head} \\\n"
+      case _ => fullOptions.mkString(" \\\n") + " \\\n"
+
+    "curl" + curlTypeString + curlOptionsString + url
 
   }
 
