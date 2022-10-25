@@ -2,6 +2,26 @@ package com.palmer.data
 
 import scala.sys.process.*
 
+
+case class ApiCall(restType: RestfulType, url: String, options: Set[ApiCallOption]) {
+
+  def generateCurlStatement: String = {
+
+    val fullOptions = options.map(_.generateFullArgument)
+    
+    // Use curl option string to produce human friendly command
+    val curlOptionsString = fullOptions.size match
+      case 0 => " "
+      case 1 => s" ${fullOptions.head} "
+      case _ => " " + fullOptions.mkString(" \\\n") +" \\\n"
+
+    "curl" + curlOptionsString + url
+
+  }
+
+}
+
+
 sealed abstract class RestfulType(val curlPrefixArgs: Seq[String])
 
 object RestfulType {
@@ -13,125 +33,41 @@ object RestfulType {
 
 }
 
-
-abstract class ApiCall(val restType: RestfulType, val url: String) {
-
-  def generateCurlStatement: String = {
-
-    val curlOptions: Seq[String] = {
-
-      // Headers -H '<HEADER>'
-      this match
-        case headers: WithHeaders =>
-          headers.getHeaders.values.map(h => s"-H '$h'")
-        case _ => Seq.empty[String]
-      
-    } ++: {
-      
-      // Input Data -d '<DATA>'
-      this match
-        case inputData: WithInputData =>
-          Seq(s"-d '${inputData.getInputData.value}'")
-        case _ => Seq.empty[String]
-    
-    } ++: {
-
-      // Output Bytes Data --output <FILE>
-      this match
-        case outputBytes: WithOutputBytes =>
-          Seq(s"--output '${outputBytes.getOutputBytes.outputPath}'")
-        case _ => Seq.empty[String]
-
-    }
-
-    // Use curl option string to produce human friendly command
-    val curlOptionsString = curlOptions.size match
-      case 0 => " "
-      case 1 => s" ${curlOptions.head} "
-      case _ => " " + curlOptions.mkString(" \\\n")
-
-    "curl" + curlOptionsString + url
-
-  }
-
-}
-
-object ApiCall {
-
-  def generate(restType: RestfulType, url: String, options: Set[ApiCallOption] = Set.empty): ApiCall = {
-
-    def getOption(optionKey: String): Option[ApiCallOption] = options.find(_.getOptionKey == optionKey)
-    val headers = getOption(OptionKeys.HEADERS)
-    val outputBytes = getOption(OptionKeys.OUTPUT_BYTES)
-    val inputData = getOption(OptionKeys.INPUT_DATA)
-
-    // TODO make runtime class construction process generic to allow more options
-    (headers, outputBytes, inputData) match
-
-      case (Some(h), None, None) => new ApiCall(restType, url) with WithHeaders {
-        override def getHeaders: Headers = h.asInstanceOf[Headers]
-      }
-      case (None, Some(o), None) => new ApiCall(restType, url) with WithOutputBytes {
-        override def getOutputBytes: OutputBytes = o.asInstanceOf[OutputBytes]
-      }
-      case (None, None, Some(d)) => new ApiCall(restType, url) with WithInputData {
-        override def getInputData: InputData = d.asInstanceOf[InputData]
-      }
-
-      case (Some(h), Some(o), None) => new ApiCall(restType, url) with WithHeaders with WithOutputBytes {
-        override def getHeaders: Headers = h.asInstanceOf[Headers]
-        override def getOutputBytes: OutputBytes = o.asInstanceOf[OutputBytes]
-      }
-      case (Some(h), None, Some(d)) => new ApiCall(restType, url) with WithHeaders with WithInputData {
-        override def getHeaders: Headers = h.asInstanceOf[Headers]
-        override def getInputData: InputData = d.asInstanceOf[InputData]
-      }
-      case (None, Some(o), Some(d)) => new ApiCall(restType, url) with WithOutputBytes with WithInputData {
-        override def getOutputBytes: OutputBytes = o.asInstanceOf[OutputBytes]
-        override def getInputData: InputData = d.asInstanceOf[InputData]
-      }
-
-      case (Some(h), Some(o), Some(d)) => new ApiCall(restType, url) with WithHeaders with WithOutputBytes
-        with WithInputData {
-        override def getHeaders: Headers = h.asInstanceOf[Headers]
-        override def getOutputBytes: OutputBytes = o.asInstanceOf[OutputBytes]
-        override def getInputData: InputData = d.asInstanceOf[InputData]
-      }
-
-      case _ => new ApiCall(restType, url) {}
-
-  }
-
-}
-
 trait ApiCallOption {
-  def getOptionKey: String
-  override def equals(obj: Any): Boolean = super.equals(obj)
-  override def hashCode(): Int = super.hashCode()
-}
-object OptionKeys {
-  val HEADERS = "headers"
-  val OUTPUT_BYTES = "output_bytes"
-  val INPUT_DATA = "input_data"
+
+  def allowsMultiple: Boolean
+  def getArgument: String
+  def getValue: String
+  def getQuoteCharacter: Option[String]
+
+  def generateFullArgument = s"$getArgument ${getQuoteCharacter.getOrElse("")}$getValue${getQuoteCharacter.getOrElse("")}"
+
+  override def equals(obj: Any): Boolean = {
+    obj match
+      case option: ApiCallOption => getArgument == option.getArgument && getValue == option.getValue
+      case _ => false
+  }
+  override def hashCode(): Int = (getArgument, getValue).hashCode()
+
 }
 
-case class Headers(values: Seq[String]) extends ApiCallOption {
-  override def getOptionKey: String = OptionKeys.HEADERS
-}
-trait WithHeaders {
-  def getHeaders: Headers
+case class Headers(value: String) extends ApiCallOption {
+  override def allowsMultiple: Boolean = true
+  override def getArgument: String = "-H"
+  override def getValue: String = value
+  override def getQuoteCharacter: Option[String] = Some("'")
 }
 
 case class OutputBytes(outputPath: String) extends ApiCallOption {
-  override def getOptionKey: String = OptionKeys.OUTPUT_BYTES
-}
-trait WithOutputBytes {
-  def getOutputBytes: OutputBytes
+  override def allowsMultiple: Boolean = false
+  override def getArgument: String = "--output"
+  override def getValue: String = outputPath
+  override def getQuoteCharacter: Option[String] = None
 }
 
-case class InputData(value: String) extends ApiCallOption {
-  override def getOptionKey: String = OptionKeys.INPUT_DATA
-}
-trait WithInputData {
-  def getInputData: InputData
+case class InputData(dataPacket: String) extends ApiCallOption {
+  override def allowsMultiple: Boolean = false
+  override def getArgument: String = "-d"
+  override def getValue: String = dataPacket
+  override def getQuoteCharacter: Option[String] = Some("'")
 }
